@@ -1,25 +1,26 @@
 {
     "name": "jerrybot-discord",
-    "version": "1.0.0",
-    "description": "",
-    "main": "index.js",
-    "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
-    },
-    "keywords": [],
-    "author": "",
-    "license": "ISC",
-    "devEngines": {
-        "packageManager": {
-            "name": "pnpm",
-            "version": "^11.7.0",
-            "onFail": "download"
-        }
-    },
+    "version": "0.1.0",
+    "description": "A Discord bot, rewritten in TypeScript on discord.js v14.",
     "type": "module",
+    "packageManager": "pnpm@11.7.0",
+    "scripts": {
+        "start": "tsx --env-file=.env src/index.ts",
+        "dev": "tsx watch --env-file=.env src/index.ts",
+        "deploy": "tsx --env-file=.env src/core/deploy.ts",
+        "typecheck": "tsc --noEmit",
+        "lint": "eslint ."
+    },
+    "dependencies": {
+        "discord.js": "^14.26.4"
+    },
     "devDependencies": {
+        "@eslint/js": "^10.0.1",
         "@types/node": "^26.0.0",
+        "eslint": "^10.5.0",
+        "globals": "^17.6.0",
         "tsx": "^4.22.4",
-        "typescript": "^6.0.3"
+        "typescript": "^6.0.3",
+        "typescript-eslint": "^8.61.1"
     }
 }
