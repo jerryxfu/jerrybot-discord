@@ -1,6 +1,6 @@
 import {EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder,} from "discord.js";
 import type {Command} from "../../types/command.js";
-import {guildMemberIsAbove} from "../utils.js";
+import {failsHierarchy, failsPermission, failsSelfTarget} from "../../utils/guards.js";
 
 const command: Command = {
     data: new SlashCommandBuilder()
@@ -19,7 +19,7 @@ const command: Command = {
         .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
 
     async execute(interaction) {
-        // DM guard
+        // don't move this into a guard because type narrowing doesn't survive a function call
         if (!interaction.inCachedGuild()) {
             await interaction.reply({
                 content: "This command can only be used in a server.",
@@ -42,23 +42,14 @@ const command: Command = {
             return;
         }
 
-        // idiot guard
-        if (target.id === interaction.user.id) {
-            await interaction.reply({
-                content: "You cannot ban yourself.",
-                flags: MessageFlags.Ephemeral,
-            });
-            return;
-        }
+        if (await failsPermission(interaction, member, PermissionFlagsBits.BanMembers,
+            "You don't have permission to ban members.")) return;
 
-        // Role hierarchy check
-        if (targetMember && !guildMemberIsAbove(member, targetMember)) {
-            await interaction.reply({
-                content: "You cannot ban someone with an equal or higher role.",
-                flags: MessageFlags.Ephemeral,
-            });
-            return;
-        }
+        if (await failsSelfTarget(interaction, interaction.user.id, target.id,
+            "You cannot ban yourself.")) return;
+
+        if (targetMember && await failsHierarchy(interaction, member, targetMember,
+            "You cannot ban someone with an equal or higher role.")) return;
 
         // Can the bot actually ban this member?
         if (targetMember && !targetMember.bannable) {
