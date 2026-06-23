@@ -4,7 +4,11 @@ import {commands} from "./core/loadCommands.js";
 import {events} from "./core/loadEvents.js";
 
 const client = new BotClient({
-    intents: [GatewayIntentBits.Guilds],
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildMembers,
+    ],
 });
 
 // Register commands into the collection the dispatcher reads from.

@@ -1,6 +1,5 @@
-import {EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder,} from "discord.js";
+import {MessageFlags, PermissionFlagsBits, SlashCommandBuilder,} from "discord.js";
 import type {Command} from "../../types/command.js";
-import {failsHierarchy, failsPermission, failsSelfTarget} from "../../utils/guards.js";
 
 const command: Command = {
     data: new SlashCommandBuilder()
@@ -28,7 +27,13 @@ const command: Command = {
             return;
         }
 
-        const target = interaction.options.getUser("user", true);
+        await interaction.reply({
+            content: "This command is currently disabled. You can use discord's integrated command.",
+            flags: MessageFlags.Ephemeral,
+        });
+        return;
+
+        /*const target = interaction.options.getUser("user", true);
         const reason = interaction.options.getString("reason") ?? "No reason provided.";
         const member = interaction.member; // typed as GuildMember thanks to inCachedGuild()
         const targetMember = interaction.guild.members.cache.get(target.id);
@@ -77,7 +82,7 @@ const command: Command = {
                 content: "Something went wrong while banning that user.",
                 flags: MessageFlags.Ephemeral,
             });
-        }
+        }*/
     },
 };
 

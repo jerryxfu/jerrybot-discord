@@ -1,7 +1,5 @@
-import {EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder,} from "discord.js";
+import {MessageFlags, PermissionFlagsBits, SlashCommandBuilder,} from "discord.js";
 import type {Command} from "../../types/command.js";
-import {failsHierarchy, failsPermission, failsSelfTarget,} from "../../utils/guards.js";
-import {parseDuration} from "../../utils/duration.js";
 
 // Discord caps timeouts at 28 days.
 const MAX_TIMEOUT_MS = 28 * 86_400_000;
@@ -36,7 +34,13 @@ const command: Command = {
             return;
         }
 
-        const member = interaction.member;
+        await interaction.reply({
+            content: "This command is currently disabled. You can use discord's integrated command.",
+            flags: MessageFlags.Ephemeral,
+        });
+        return;
+
+        /*const member = interaction.member;
         const target = interaction.options.getUser("user", true);
         const durationInput = interaction.options.getString("duration", true);
         const reason = interaction.options.getString("reason") ?? "No reason provided.";
@@ -107,7 +111,7 @@ const command: Command = {
                 content: "Something went wrong while timing out that user.",
                 flags: MessageFlags.Ephemeral,
             });
-        }
+        }*/
     },
 };
 
