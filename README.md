@@ -75,7 +75,7 @@ nano .env                      # paste DISCORD_TOKEN
 
 # run under PM2 so it survives crashes + reboots
 pnpm add -g pm2
-pm2 start "pnpm start" --name jerrybot-discord
+pm2 start ecosystem.config.cjs # config defines name + stop_exit_codes
 pm2 save
 pm2 startup                    # run the command it prints, for relaunch-on-reboot
 ```

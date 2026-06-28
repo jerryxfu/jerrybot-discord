@@ -3,6 +3,7 @@ import type {
     ChatInputCommandInteraction,
     SlashCommandBuilder,
     SlashCommandOptionsOnlyBuilder,
+    SlashCommandSubcommandBuilder,
     SlashCommandSubcommandsOnlyBuilder,
 } from "discord.js";
 
@@ -18,6 +19,12 @@ export interface Command {
         | SlashCommandBuilder
         | SlashCommandOptionsOnlyBuilder
         | SlashCommandSubcommandsOnlyBuilder;
+
+    execute(interaction: ChatInputCommandInteraction): Awaitable<void>;
+}
+
+export interface Subcommand {
+    data: SlashCommandSubcommandBuilder;
 
     execute(interaction: ChatInputCommandInteraction): Awaitable<void>;
 }

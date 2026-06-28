@@ -5,13 +5,7 @@ import {MessageFlags, PermissionFlagsBits} from "discord.js";
  * Guards are small checks that live at the top of a command's execute().
  *
  * Contract: a guard returns `true` if the command should STOP (the guard has
- * already sent an ephemeral reply explaining why), or `false` if it's fine to
- * continue. So every call site reads the same way:
- *
- *   if (await failsXyz(...)) return;
- *
- * Most guards take the message to show on failure, so the command keeps control
- * of its own wording.
+ * already sent an ephemeral reply explaining why)
  */
 
 /** Sends an ephemeral reply, used internally by the guards. */
@@ -63,7 +57,7 @@ export async function failsHierarchy(
     return false;
 }
 
-/** Stops if `a.id === b.id` — i.e. the user is targeting themselves. */
+/** Stops if `a.id === b.id`, i.e. the user is targeting themselves. */
 export async function failsSelfTarget(
     interaction: ChatInputCommandInteraction,
     selfId: string,
@@ -79,6 +73,44 @@ export async function failsSelfTarget(
 /** True if `a`'s highest role is strictly above `b`'s. */
 export function guildMemberIsAbove(a: GuildMember, b: GuildMember): boolean {
     return a.roles.highest.comparePositionTo(b.roles.highest) > 0;
+}
+
+// Per user allowlist
+const SUDO_IDS = [
+    "611633988515266562", // jerryxf
+];
+
+// Per-guild role allowlist: members with any of these roles can use sudo commands
+const SUDO_ROLES: Record<string, string[]> = {
+    "631939549332897842": [ // jerry server
+        "642107004076163103", // sudo
+    ],
+};
+
+export async function failsSudo(
+    interaction: ChatInputCommandInteraction,
+    message = "You're not allowed to use this command.",
+): Promise<boolean> {
+    const app = await interaction.client.application.fetch();
+    const ownerId = app.owner && "id" in app.owner ? app.owner.id : null;
+    const allowedUsers = [ownerId, ...SUDO_IDS].filter((id): id is string => Boolean(id));
+
+    // Owner or explicitly-listed user
+    if (allowedUsers.includes(interaction.user.id)) {
+        return false;
+    }
+
+    // Role-based
+    if (interaction.inCachedGuild()) {
+        const guildRoles = SUDO_ROLES[interaction.guildId];
+        if (guildRoles && interaction.member.roles.cache.hasAny(...guildRoles)) {
+            return false;
+        }
+    }
+
+    // Denied.
+    await interaction.reply({content: message, flags: MessageFlags.Ephemeral});
+    return true;
 }
 
 export {PermissionFlagsBits};
