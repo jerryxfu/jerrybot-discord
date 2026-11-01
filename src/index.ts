@@ -8,6 +8,10 @@ const client = new BotClient({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildMembers,
+        // For chat. MessageContent is privileged: enable it in the Developer Portal
+        // (Bot -> Privileged Gateway Intents) or login will fail.
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
     ],
 });
 

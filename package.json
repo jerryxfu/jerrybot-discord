@@ -7,11 +7,16 @@
     "scripts": {
         "start": "tsx --env-file=.env src/index.ts",
         "dev": "tsx watch --env-file=.env src/index.ts",
-        "deploy": "tsx --env-file=.env src/core/deploy.ts local",
+        "deploy_l": "tsx --env-file=.env src/core/deploy.ts local",
+        "deploy_cl": "tsx --env-file=.env src/core/deploy.ts clear_local",
+        "deploy_g": "tsx --env-file=.env src/core/deploy.ts global",
+        "deploy_cg": "tsx --env-file=.env src/core/deploy.ts clear_global",
         "typecheck": "tsc --noEmit",
-        "lint": "eslint ."
+        "lint": "eslint .",
+        "agent:setup": "tsx --env-file=.env src/core/setupAgent.ts"
     },
     "dependencies": {
+        "@anthropic-ai/sdk": "^1.3.0",
         "@discordjs/voice": "^0.19.2",
         "discord.js": "^14.26.4"
     },

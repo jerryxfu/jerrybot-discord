@@ -4,8 +4,7 @@ import type {Command} from "../types/command.js";
 import ban from "../commands/moderation/ban.js";
 import kick from "../commands/moderation/kick.js";
 import timeout from "../commands/moderation/timeout.js";
-import send from "../commands/other/send.js";
-import thinking from "../commands/other/thinking.js";
+import send from "../commands/send/send.js";
 import move from "../commands/utility/move.js";
 import disconnect from "../commands/utility/disconnect.js";
 import join from "../commands/voice/join.js";
@@ -19,7 +18,6 @@ export const commands: Command[] = [
     kick,
     timeout,
     send,
-    thinking,
     disconnect,
     move,
     join,

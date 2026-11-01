@@ -1,24 +1,18 @@
-import {ChannelType, MessageFlags, SlashCommandBuilder,} from "discord.js";
-import type {Command} from "../../types/command.js";
+import {ChannelType, MessageFlags, SlashCommandSubcommandBuilder} from "discord.js";
+import type {Subcommand} from "../../types/command.js";
+import {logSend} from "../../utils/sendHistory.js";
 import {sleep} from "../../utils/sleep.js";
+import {typingDelay} from "../../utils/typingDelay.js";
 
-const CHARS_PER_SECOND = 18;
-const BASE_MS = 50;
-const MIN_MS = 50;
 const MAX_MS = 10_000; // typing indicator lasts for exactly 10s
 
-function typingDuration(length: number): number {
-    const raw = BASE_MS + (length / CHARS_PER_SECOND) * 1000;
-    return Math.min(MAX_MS, Math.max(MIN_MS, Math.round(raw)));
-}
-
-const command: Command = {
-    data: new SlashCommandBuilder()
-        .setName("send")
-        .setDescription("Sends a message in a text channel.")
+const subcommand: Subcommand = {
+    data: new SlashCommandSubcommandBuilder()
+        .setName("message")
+        .setDescription("Sends a message as the bot, after a realistic typing delay.")
         .addStringOption((option) =>
             option
-                .setName("message")
+                .setName("text")
                 .setDescription("The message to send.")
                 .setRequired(true),
         )
@@ -31,7 +25,7 @@ const command: Command = {
         ),
 
     async execute(interaction) {
-        const message = interaction.options.getString("message", true);
+        const text = interaction.options.getString("text", true);
 
         // getChannel's 3rd arg (allowed types) narrows the return to a full channel
         // class with methods like isSendable(), instead of a bare resolved partial.
@@ -50,7 +44,7 @@ const command: Command = {
             return;
         }
 
-        const durationMs = typingDuration(message.length);
+        const durationMs = typingDelay(text.length, MAX_MS);
 
         await interaction.reply({
             content: `Sending to ${channel} with ~${durationMs}ms of typing...`,
@@ -61,9 +55,17 @@ const command: Command = {
 
         await sleep(durationMs);
 
-        await channel.send({content: message + `\n-# *Sent by ${interaction.user.displayName}*`});
+        await channel.send({content: text});
+        await logSend({
+            at: Date.now(),
+            kind: "message",
+            guildId: interaction.guildId,
+            channelId: channel.id,
+            userId: interaction.user.id,
+            content: text,
+        });
         await interaction.deleteReply();
     },
 };
 
-export default command;
+export default subcommand;

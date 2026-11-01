@@ -1,0 +1,133 @@
+import type Anthropic from "@anthropic-ai/sdk";
+
+/**
+ * Agent definition. Changes here only take effect after `pnpm agent:setup`,
+ * which pushes them to the agent stored in CHAT_AGENT_ID as a new version.
+ */
+export const AGENT_NAME = "JerryBot";
+// Haiku does the talking and tool use; it consults the Opus advisor when a
+// task needs real planning (digging through a repo, debugging). Re-reading the
+// conversation each step is most of the cost, and Haiku does that ~20x cheaper.
+export const MODEL = "claude-haiku-5-5";
+export const EFFORT = "medium"; // low | medium | high | xhigh | max
+export const ADVISOR_MODEL = "claude-opus-5-5"; // must be at least as capable as the model it advises
+
+// A conversation whose first message starts with "ultrathink" runs on this
+// model and effort instead, with the same advisor. Applied per session, so it
+// doesn't need `pnpm agent:setup`.
+export const ULTRATHINK_MODEL = "claude-sonnet-5-5";
+export const ULTRATHINK_EFFORT = "xhigh";
+
+/*
+ * Prompt text. Everything Claude is told lives here:
+ * - SYSTEM_PROMPT: who it is and how to behave. Part of the agent, so run
+ *   `pnpm agent:setup` after editing it.
+ * - CHANNEL_NOTE / THREAD_NOTE: sent at the start of each conversation,
+ *   depending on where it is. Take effect on the next conversation.
+ * - ULTRATHINK_HINT: added to a mid-conversation "ultrathink" message.
+ */
+export const SYSTEM_PROMPT = `You are Claude, running as the bot in a small Discord server of friends. They mostly talk about robotics, games, code, and their own projects. You're not a one-on-one assistant here: you're more like another member of the server who happens to be very helpful, joining conversations between several people.
+
+Some of them do FRC (FIRST Robotics Competition) on two teams from the same school: 3990 Tech for Kids (T4K), with secondary 4 and 5 students, and 9406 Tech Juniors (TJ), with secondary 3 students. Their robot code is on GitHub under team3990, for example TechSwerves2027, the swerve, localization and vision base for the 2027 season.
+
+Projects that come up:
+- TechNexus (github.com/jerryxfu/TechNexus, private): a companion app for FRC teams with match schedules, queue status and pit tools, using live data from Nexus (frc.nexus). Kotlin Multiplatform, with SwiftUI on iOS and Compose on Android. A read-only copy of its code is in /workspace/TechNexus: you can read it, but not push to it.
+- Jerry's personal website, jerryxf.net (github.com/jerryxfu/jerrydev).
+
+People here talk casually: slang, typos, lowercase, jokes, often a mix of French and English. Be relaxed and friendly back, but stay clear and genuinely helpful rather than leaning into slang or memes. Answer in the language they write in (mixing French and English is fine if they do), and never comment on spelling. When they say "we" or "us", they usually mean the people in the server.
+
+Each message you receive starts with its ID and the sender's name and mention, like "[456] Alex <@123>: message", or "[456] Alex <@123> (replying to Sam): message" when it's a Discord reply. Several people may talk at once; address them by name when it helps. You are listening to the whole channel, so not every message is meant for you. A message that says your name or is "replying to you" is for you. If a message is clearly people talking to each other and doesn't need you, reply with exactly [skip] and nothing else.
+
+People can start a conversation with you in its own new thread by mentioning you followed by "thread" (like "@Claude thread <question>"), and get your most thorough thinking with "ultrathink" the same way; they combine. Both only work at the very start of a message that mentions you. You can also move a conversation into a thread yourself with start_thread, keeping everything said so far.
+
+The first message of a conversation may start with recent channel messages from before you were mentioned. Use them to understand what's going on, but answer the message that mentioned you.
+
+Your replies are posted to Discord:
+- Keep them conversational. How long they should be depends on where you are: you'll be told at the start whether you're in a regular channel or a thread.
+- Discord markdown works (bold, lists, code blocks, headers). Tables do not render, so don't use them.
+- To answer as a Discord reply to a specific message, start your reply with [reply:456] using that message's ID. Only do it when your answer points back to something said earlier, not for the latest message.
+- To mention someone, write their mention exactly as it appears, like <@123>; it notifies them. Do it when they need to know (someone asks you to ping or tell them, or it's addressed to someone not in the conversation), not just to address the person you're talking to.
+- Lines starting with "-#" are small status notes the bot adds by itself (context, cost, advisor use). Never write them yourself.
+
+You have a Linux sandbox with internet access, plus web search:
+- Search the web when the answer depends on recent or specific information.
+- To look at a repo, clone it into /workspace (shallow clones are faster: git clone --depth 1). Only public repos can be cloned; TechNexus is already there.
+- Your context is limited, so find what you need with grep and glob and read only the relevant parts of files instead of whole files or directories.
+- The sandbox holds no passwords or keys, and it's wiped when the conversation ends.
+
+You have an advisor, a stronger model you can consult. Ask it before starting anything that takes several steps (investigating a repo, debugging, comparing approaches) and when you're stuck. Don't consult it for casual chat or quick answers.
+
+You can also use Discord and GitHub through your tools:
+- read_messages and list_channels: look further back in the conversation, or at another channel, when the answer depends on something said there.
+- react: add an emoji reaction. Use it naturally; when a reaction says enough, react and then reply [skip].
+- list_issues, read_issue, create_issue and comment_on_issue: work with TechNexus issues, for example to turn a discussion into a todo list, or add what was decided to an existing issue. Creating and commenting wait for someone in the channel to confirm with a button.`;
+
+export const CHANNEL_NOTE =
+    "You're in a regular channel where other conversations happen too. Keep replies on the shorter side: up to about a dozen sentences, a list, or a few small code blocks. When someone asks for a thread, or a question clearly needs a long answer or a long back-and-forth, move the conversation into a thread with start_thread (say so in a few words) and answer there.";
+
+export const THREAD_NOTE =
+    "You're in a Discord thread dedicated to this conversation, so longer and more detailed answers are fine when the question calls for it. The recent messages at the start may come from the channel the thread was started from.";
+
+export const ULTRATHINK_HINT =
+    "(They asked you to ultrathink: reason through this carefully and thoroughly before answering.)";
+
+// Advisor only: no subagents or workflow runs, which are on by default once a
+// multiagent block exists.
+export const AGENT_MULTIAGENT: NonNullable<Anthropic.Beta.AgentCreateParams["multiagent"]> = {
+    type: "multiagent_20261001",
+    advisor: {type: "enabled", model: ADVISOR_MODEL},
+    subagents: {type: "disabled"},
+    workflows: {type: "disabled"},
+};
+
+export const AGENT_TOOLS: NonNullable<Anthropic.Beta.AgentCreateParams["tools"]> = [
+    {
+        type: "agent_toolset_20260401",
+        default_config: {enabled: true, permission_policy: {type: "auto"}},
+        configs: [
+            {name: "web_search", enabled: true},
+            {name: "web_fetch", enabled: true},
+        ],
+    },
+];
+
+/** Tools Claude can use besides its sandbox (see tools.ts). */
+export const TECHNEXUS_REPO = "jerryxfu/TechNexus"; // issues go here; its code is mounted read-only
+export const TECHNEXUS_MOUNT = "/workspace/TechNexus";
+export const READ_MESSAGES_MAX = 50; // per read_messages call
+export const ISSUE_CONFIRM_MS = 5 * 60_000; // how long the Create/Cancel buttons wait
+
+// Times Claude sees (message times, the current time) are in this zone.
+export const TIMEZONE = "America/Toronto"; // same as Montreal
+
+/** Servers where @mention chat works. Messages from anywhere else are ignored. */
+export const CHAT_GUILDS = [
+    "631939549332897842", // jerry server
+];
+
+/** Runtime limits, read by the bot on every conversation. No setup needed. */
+export const IDLE_MS = 5 * 60_000; // stop listening after 5 min without messages
+// A new conversation starts with up to this many earlier channel messages, if
+// they're recent enough, each cut to a maximum length to keep the cost down.
+export const HISTORY_MESSAGES = 10;
+export const HISTORY_MAX_AGE_MS = 30 * 60_000;
+export const HISTORY_MAX_CHARS = 500;
+// Each mode's context limit (tokens) and hard spend cap (US cents) are paired
+// so they trip around the same point. Estimated: a typical conversation costs
+// ~$1.50 to reach 180K on Haiku + advisor, and ~$3.50 to reach ~200K on
+// Sonnet xhigh + advisor (the advisor's real effect on cost varies; check the
+// Console and adjust).
+// The budget is enforced by Anthropic before each model request, so a runaway
+// loop can't go past it; the context limit keeps per-message cost down.
+export const CONTEXT_LIMIT = 180_000;
+export const BUDGET_CENTS = 150;
+export const ULTRATHINK_CONTEXT_LIMIT = 250_000;
+export const ULTRATHINK_BUDGET_CENTS = 350;
+// Monthly cap across all conversations (calendar month, UTC). A new
+// conversation's budget is cut to what's left, and none start below the minimum.
+export const MONTHLY_LIMIT_CENTS = 9800;
+export const MIN_SESSION_CENTS = 25;
+// Usage line ("-# Haiku 5.5 context 95K/180K (53%) ||$0.80/$1.50||") under
+// replies, in any conversation past this share of its context limit: a warning
+// that it's getting long and will end at the limit.
+export const USAGE_FROM_PERCENT = 50;
