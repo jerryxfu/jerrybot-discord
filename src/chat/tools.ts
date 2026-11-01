@@ -46,7 +46,7 @@ export const CUSTOM_TOOLS: BetaManagedAgentsCustomToolParams[] = [
     {
         type: "custom",
         name: "list_channels",
-        description: "List this server's text channels that the person asking can see, with their IDs and topics.",
+        description: "List this server's text channels that the person asking can see, as \"<#id> #name: topic\".",
         input_schema: {type: "object", properties: {}},
     },
     {
@@ -175,7 +175,7 @@ function listChannels(ctx: ToolContext): ToolResult {
     const lines = ctx.channel.guild.channels.cache
         .filter((c) => (c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement) && canRead(c, asker))
         .sort((a, b) => ("rawPosition" in a && "rawPosition" in b ? a.rawPosition - b.rawPosition : 0))
-        .map((c) => `#${c.name} (${c.id})${"topic" in c && c.topic ? `: ${truncate(c.topic, 100)}` : ""}`);
+        .map((c) => `<#${c.id}> #${c.name}${"topic" in c && c.topic ? `: ${truncate(c.topic, 100)}` : ""}`);
     return {text: lines.length > 0 ? lines.join("\n") : "No channels the person asking can see."};
 }
 
@@ -193,9 +193,10 @@ async function readMessages(input: Record<string, unknown>, ctx: ToolContext): P
     const lines = [...fetched.values()]
         .reverse() // fetch returns newest first
         .map((m) => `${formatTime(m.createdAt)} ${truncate(formatMessage(m), 500)}`);
-    if (lines.length === 0) return {text: `No messages in #${channel.name}${before ? " before that one" : ""}.`};
+    const where = `<#${channel.id}> #${channel.name}`;
+    if (lines.length === 0) return {text: `No messages in ${where}${before ? " before that one" : ""}.`};
     const count = `${lines.length} message${lines.length === 1 ? "" : "s"}`;
-    return {text: `#${channel.name}, ${count}, oldest first:\n${lines.join("\n")}`};
+    return {text: `${where}, ${count}, oldest first:\n${lines.join("\n")}`};
 }
 
 async function react(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {

@@ -70,6 +70,8 @@ with the full transcript and its cost.
 - Each **conversation** is a new session with its own sandbox container, built from the environment.
   Several channels can have conversations at the same time; they don't share files or history.
   Old sessions are never reused, so every conversation starts clean.
+- When a conversation goes to sleep, its session is **archived**: hidden from the Console's default
+  session list, but still readable there (transcript and cost) and counted in the monthly total.
 
 ### First-time setup
 

@@ -62,7 +62,7 @@ interface Conversation {
     contextLimit: number;
     contextTokens: number; // size of the context after the latest model request
     lastReply: Message | null; // last message posted this turn, gets the footer
-    advisorCalls: number; // advisor consultations this turn
+    advisorThreads: Set<string>; // advisor consultations this turn, by thread ID
     replies: number; // messages posted this turn
     cachedTokens: number; // input tokens read from cache this turn
     inputTokens: number; // all input tokens this turn, cached or not
@@ -176,8 +176,9 @@ export async function handleChatMessage(message: Message): Promise<void> {
         // Where it's talking sets how long its replies should be. A system
         // message applies to this turn and every one after it.
         const where = channel.isThread() ? THREAD_NOTE : CHANNEL_NOTE;
+        const here = `This is <#${channel.id}> (#${channel.name}).`;
         const now = `It's ${formatTime(new Date())} now.`;
-        events.push({type: "system.message", content: [{type: "text", text: `${where} ${now}`}]});
+        events.push({type: "system.message", content: [{type: "text", text: `${where} ${here} ${now}`}]});
     }
 
     conversation.lastMessage = message;
@@ -261,7 +262,7 @@ async function open(
         contextLimit,
         contextTokens: 0,
         lastReply: null,
-        advisorCalls: 0,
+        advisorThreads: new Set(),
         replies: 0,
         cachedTokens: 0,
         inputTokens: 0,
@@ -416,13 +417,18 @@ async function handleEvent(conversation: Conversation, event: SessionEvent): Pro
             return;
         }
 
+        // Each advisor consultation runs in its own thread: created, then its
+        // (redacted) advice is delivered. Either event counts, once per thread,
+        // so a consultation shows even if only one of them reaches this stream.
         case "session.thread_created":
-            // Each advisor consultation runs in its own thread. The advice
-            // itself is redacted, but the consultation shows up here.
             if (event.agent_name === ADVISOR_THREAD) {
-                conversation.advisorCalls++;
+                conversation.advisorThreads.add(event.session_thread_id);
                 startTyping(conversation);
             }
+            return;
+
+        case "agent.thread_message_received":
+            if (event.from_agent_name === ADVISOR_THREAD) conversation.advisorThreads.add(event.from_session_thread_id);
             return;
 
         case "session.status_running":
@@ -494,7 +500,7 @@ async function moveToThread(conversation: Conversation, input: Record<string, un
     conversations.set(thread.id, conversation);
     log(conversation, `moved here from #${channel.name}`);
 
-    return {text: `Moved. This conversation now continues in the thread "${thread.name}": your replies go there, and messages in #${channel.name} no longer reach you. ${THREAD_NOTE}`};
+    return {text: `Moved. This conversation now continues in the thread <#${thread.id}> ("${thread.name}"): your replies go there, and messages in <#${channel.id}> no longer reach you. ${THREAD_NOTE}`};
 }
 
 /** The bot's name in this server: its nickname if it has one ("Claude"), else its username. */
@@ -547,9 +553,9 @@ function showsUsage(conversation: Conversation): boolean {
  */
 async function postFooter(conversation: Conversation): Promise<void> {
     const reply = conversation.lastReply;
-    const advisorCalls = conversation.advisorCalls;
+    const advisorCalls = conversation.advisorThreads.size;
     conversation.lastReply = null;
-    conversation.advisorCalls = 0;
+    conversation.advisorThreads.clear();
     if (!reply) return; // a [skip] turn posted nothing
 
     const usage = showsUsage(conversation)
@@ -615,7 +621,8 @@ function logTurn(conversation: Conversation): void {
     const replies = conversation.replies;
     const what = replies > 0 ? `replied${replies > 1 ? ` (${replies} messages)` : ""}`
         : conversation.skipped ? "skipped" : "ended a turn without replying";
-    const advisor = conversation.advisorCalls > 0 ? `, asked the advisor ${conversation.advisorCalls}x` : "";
+    const calls = conversation.advisorThreads.size;
+    const advisor = calls > 0 ? `, asked the advisor ${calls}x` : "";
     const cached = conversation.inputTokens > 0
         ? `, ${Math.round((conversation.cachedTokens / conversation.inputTokens) * 100)}% cached`
         : "";
@@ -636,8 +643,13 @@ async function end(conversation: Conversation, reason: string | null = null): Pr
     stopTyping(conversation);
     conversation.stream?.abort();
 
-    // The session itself is left in place: it's the transcript in the Console.
     const [spent, month] = await Promise.all([spentCents(conversation.sessionId), monthSpentCents()]);
+    // Archive the session: it disappears from the Console's default session list
+    // but stays readable there (transcript, cost) and still counts toward the
+    // monthly total. Sessions are never resumed, so nothing needs it active.
+    await api().beta.sessions.archive(conversation.sessionId).catch((err: unknown) => {
+        console.error(`[chat] ${conversation.label} couldn't archive the session:`, err);
+    });
     log(
         conversation,
         `went to sleep (${reason ?? "idle"}): ${spent === null ? "?" : formatCents(spent)} spent, ` +

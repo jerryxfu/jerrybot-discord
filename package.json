@@ -6,7 +6,7 @@
     "packageManager": "pnpm@11.7.0",
     "scripts": {
         "start": "tsx --env-file=.env src/index.ts",
-        "dev": "tsx watch --env-file=.env src/index.ts",
+        "dev": "tsx watch --clear-screen=false --env-file=.env src/index.ts",
         "deploy_l": "tsx --env-file=.env src/core/deploy.ts local",
         "deploy_cl": "tsx --env-file=.env src/core/deploy.ts clear_local",
         "deploy_g": "tsx --env-file=.env src/core/deploy.ts global",
