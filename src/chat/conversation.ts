@@ -160,7 +160,7 @@ export async function handleChatMessage(message: Message): Promise<void> {
         return;
     }
     if (mentioned && !fork && !keywords.rest && (keywords.stop || keywords.sleep)) {
-        if (active && keywords.sleep) await end(active, "told to sleep", true);
+        if (active && keywords.sleep) await end(active, "user requested", true);
         else if (active) await interrupt(active, message);
         return;
     }
