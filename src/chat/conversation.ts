@@ -74,6 +74,9 @@ const TYPING_DELAY_MS = 4_000;
 const OUTPUTS_DELAY_MS = 2_500;
 const SWEEP_MS = 15 * 60_000; // how often sessions asleep too long get archived
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+// Threads the bot starts leave the channel list after a day without messages
+// (Discord only allows 1 hour, 1 day, 3 days or 1 week). Posting in one brings it back.
+const THREAD_ARCHIVE = ThreadAutoArchiveDuration.OneDay;
 
 type Content = BetaManagedAgentsUserMessageEventParams["content"];
 
@@ -175,7 +178,7 @@ export async function handleChatMessage(message: Message): Promise<void> {
         try {
             channel = await message.startThread({
                 name: threadName(keywords.rest, botName(message.channel)),
-                autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
+                autoArchiveDuration: THREAD_ARCHIVE,
             });
         } catch (err) {
             console.error("[chat] couldn't create a thread:", err);
@@ -1031,7 +1034,7 @@ async function moveToThread(conversation: Conversation, input: Record<string, un
     const name = typeof input.name === "string" && input.name.trim()
         ? truncate(input.name.trim(), 80)
         : threadName(anchor.content, botName(channel));
-    const thread = await anchor.startThread({name, autoArchiveDuration: ThreadAutoArchiveDuration.OneHour});
+    const thread = await anchor.startThread({name, autoArchiveDuration: THREAD_ARCHIVE});
 
     // Re-key it: messages in the thread now reach this conversation, and the
     // channel's no longer do. Typing and replies follow conversation.channel.
