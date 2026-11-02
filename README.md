@@ -226,7 +226,7 @@ pm2 startup                    # run the command it prints, for relaunch-on-rebo
 ```bash
 git pull
 pnpm install                   # only if deps changed
-pnpm deploy_g                  # only if a command's definition changed
+pnpm deploy_l                  # only if a command's definition changed (the server's commands; deploy_g would add duplicates)
 pnpm agent:setup               # only if the chat model, prompt or tools changed (once, here or on the Mac)
 pm2 restart jerrybot-discord
 ```
