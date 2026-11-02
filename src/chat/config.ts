@@ -83,10 +83,10 @@ export const CHANNEL_NOTE =
 export const THREAD_NOTE =
     "You're in a Discord thread dedicated to this conversation, so longer and more detailed answers are fine when the question calls for it. The recent messages at the start may come from the channel the thread was started from.";
 
-export const ESCALATED_NOTE = "This conversation is escalated: you're the stronger model, and escalate does nothing.";
+export const ESCALATED_NOTE = "This conversation is escalated: you're the stronger model, so don't call escalate.";
 
 export const HANDOFF_NOTE =
-    "You took it over partway through: the first message holds everything said before, oldest first, with your side's earlier replies marked \"You:\". Your sandbox is new, so files from before (like cloned repos) are gone. Answer the latest message.";
+    "You took it over partway through: the first message holds everything said before, oldest first, with your side's earlier replies marked \"You:\". Your sandbox is new, so files from before (like cloned repos) are gone. The channel already saw a notice about the switch, so don't talk about it or about the model before you: just answer the latest request. If the latest message only asked to escalate, pick up the request before it.";
 
 export const ESCALATE_HINT =
     "(They asked you to escalate: reason through this carefully and thoroughly before answering.)";

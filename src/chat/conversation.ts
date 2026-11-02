@@ -190,7 +190,7 @@ export async function handleChatMessage(message: Message): Promise<void> {
         }
     }
 
-    const escalate = keywords.escalate;
+    const escalate = mentioned && keywords.escalate; // like every keyword, only right after a mention
     let conversation = active;
     let opened: Opened | null = null; // set when this message started or woke up the conversation
     if (!conversation) {
