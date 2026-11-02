@@ -12,6 +12,7 @@ import leave from "../commands/voice/leave.js";
 import ping from "../commands/ping.js";
 import sudo from "../commands/sudo/sudo.js";
 import purge from "../commands/moderation/purge.js";
+import claude from "../commands/claude/claude.js";
 
 export const commands: Command[] = [
     ban,
@@ -24,5 +25,6 @@ export const commands: Command[] = [
     leave,
     ping,
     sudo,
-    purge
+    purge,
+    claude,
 ];

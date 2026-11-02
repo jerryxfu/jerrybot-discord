@@ -5,7 +5,7 @@ import {MONTHLY_LIMIT_CENTS} from "./config.js";
 /**
  * The footer lines for a turn, or null if there's nothing to show:
  *   -# 💡 Haiku 5.5 asked Opus 5.5 for advice (2)
- *   -# Haiku 5.5 context 95K/180K (53%) ||$0.80/$1.50||
+ *   -# Haiku 5.5 context 210K/400K (53%) ||$1.60/$3.00||
  */
 export function turnFooter(
     advisor: { model: string; advisor: string; calls: number } | null,
@@ -25,18 +25,25 @@ export function turnFooter(
 }
 
 /**
- * "-# Claude is going to sleep 😴... (reason) ||$12.30/$98.00||", plus a second
- * "-# ||$0.84/$1.50||" line for this conversation's own spend when given.
+ * "-# Claude is going to sleep 😴... (reason) · mention me within 1h to pick
+ * this back up ||$12.30/$98.00||", plus a second "-# ||$0.84/$1.50||" line for
+ * this conversation's own spend when given. The middle part shows when it can
+ * be woken up (resumeMs, how long for). A reason starting with "after" reads
+ * as part of the sentence instead: "going to sleep after detecting 15
+ * unrelated messages 😴...".
  */
 export function sleepMessage(
     name: string,
     reason: string | null,
     monthCents: number | null,
     conversation: { spent: number; budget: number } | null,
+    resumeMs: number | null,
 ): string {
-    const why = reason ? ` (${reason})` : "";
+    const after = reason?.startsWith("after ") ? ` ${reason}` : "";
+    const why = reason && !after ? ` (${reason})` : "";
+    const resume = resumeMs === null ? "" : ` · mention me within ${Math.round(resumeMs / 3_600_000)}h to pick this back up`;
     const month = monthCents === null ? "" : ` ${spoilerCost(monthCents, MONTHLY_LIMIT_CENTS)}`;
-    const lines = [`-# ${name} is going to sleep 😴...${why}${month}`];
+    const lines = [`-# ${name} is going to sleep${after} 😴...${why}${resume}${month}`];
     if (conversation) lines.push(`-# ${spoilerCost(conversation.spent, conversation.budget)}`);
     return lines.join("\n");
 }

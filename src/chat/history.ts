@@ -47,9 +47,10 @@ function withMentionNames(message: Message): string {
 /**
  * Up to HISTORY_MESSAGES channel messages from just before `message`, oldest
  * first, formatted like relayed messages. Skips anything older than
- * HISTORY_MAX_AGE_MS. The bot's own messages are included as they are.
+ * HISTORY_MAX_AGE_MS, or than `since` (epoch ms) when given. The bot's own
+ * messages are included as they are.
  */
-export async function recentMessages(message: Message<true>): Promise<string[]> {
+export async function recentMessages(message: Message<true>, since?: number): Promise<string[]> {
     let fetched;
     try {
         fetched = await message.channel.messages.fetch({limit: HISTORY_MESSAGES, before: message.id});
@@ -57,7 +58,7 @@ export async function recentMessages(message: Message<true>): Promise<string[]> 
         return []; // e.g. missing Read Message History permission
     }
 
-    const cutoff = message.createdTimestamp - HISTORY_MAX_AGE_MS;
+    const cutoff = since ?? message.createdTimestamp - HISTORY_MAX_AGE_MS;
     return [...fetched.values()]
         .filter((m) => m.createdTimestamp >= cutoff)
         .filter((m) => m.cleanContent.trim() || m.attachments.size > 0)
@@ -66,7 +67,11 @@ export async function recentMessages(message: Message<true>): Promise<string[]> 
 }
 
 /** Prefixes the first message of a conversation with the channel's recent history. */
-export function withHistory(history: string[], text: string): string {
+export function withHistory(
+    history: string[],
+    text: string,
+    header = "(Recent messages before you were mentioned, oldest first:)",
+): string {
     if (history.length === 0) return text;
-    return `(Recent messages before you were mentioned, oldest first:)\n${history.join("\n")}\n\n${text}`;
+    return `${header}\n${history.join("\n")}\n\n${text}`;
 }

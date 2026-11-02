@@ -1,23 +1,38 @@
 import {truncate} from "../utils/truncate.js";
 
-// Keywords right after the @mention, in any order: "@Claude thread ultrathink ..."
-const KEYWORD = /^(ultrathink|thread)\b[\s,:]*/i;
+// Keywords right after the @mention, in any order: "@Claude thread escalate ...".
+// "ultrathink" is an alias of "escalate", "clear" of "reset". "stop", "sleep"
+// and "reset" control the channel's conversation (see handleChatMessage).
+const KEYWORD = /^(escalate|ultrathink|thread|stop|sleep|reset|clear)\b[\s,:]*/i;
 
 /**
  * The keywords at the start of a message, after any @mentions, plus the text
- * that follows them: "<@1> thread ultrathink why?" -> both, "why?".
+ * that follows them: "<@1> thread escalate why?" -> both, "why?".
  */
-export function parseKeywords(content: string): { ultrathink: boolean; thread: boolean; rest: string } {
+export function parseKeywords(content: string): {
+    escalate: boolean;
+    thread: boolean;
+    stop: boolean;
+    sleep: boolean;
+    reset: boolean;
+    rest: string;
+} {
     let rest = content.replace(/^(\s*<@[!&]?\d+>)+/, "").trim();
-    let ultrathink = false;
+    let escalate = false;
     let thread = false;
+    let stop = false;
+    let sleep = false;
+    let reset = false;
     for (let match = KEYWORD.exec(rest); match; match = KEYWORD.exec(rest)) {
         const word = match[1]?.toLowerCase();
-        if (word === "ultrathink") ultrathink = true;
+        if (word === "escalate" || word === "ultrathink") escalate = true;
         if (word === "thread") thread = true;
+        if (word === "stop") stop = true;
+        if (word === "sleep") sleep = true;
+        if (word === "reset" || word === "clear") reset = true;
         rest = rest.slice(match[0].length);
     }
-    return {ultrathink, thread, rest};
+    return {escalate, thread, stop, sleep, reset, rest};
 }
 
 /** A thread title from the message: its first line without mentions, cut to fit. */

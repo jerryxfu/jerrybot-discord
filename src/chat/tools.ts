@@ -44,6 +44,23 @@ export const CUSTOM_TOOLS: BetaManagedAgentsCustomToolParams[] = [
         },
     },
     {
+        // Handled in conversation.ts, since it replaces the session itself.
+        type: "custom",
+        name: "escalate",
+        description:
+            "Hand this conversation to a stronger model, which answers the latest message and everything after it " +
+            "instead of you. It gets everything said so far, but not your sandbox or tool results, so put anything " +
+            "worth keeping in notes. Does nothing in an escalated conversation.",
+        input_schema: {
+            type: "object",
+            properties: {
+                reason: {type: "string", maxLength: 100, description: "Why, in a few words, like \"debugging the swerve drift\". Shown in the channel."},
+                notes: {type: "string", description: "What it should know that isn't in the messages: what you found, repos you cloned, where you got stuck."},
+            },
+            required: ["reason"],
+        },
+    },
+    {
         type: "custom",
         name: "list_channels",
         description: "List this server's text channels that the person asking can see, as \"<#id> #name: topic\".",
@@ -86,8 +103,9 @@ export const CUSTOM_TOOLS: BetaManagedAgentsCustomToolParams[] = [
         name: "create_issue",
         description:
             `Open an issue in the private TechNexus repo (${TECHNEXUS_REPO}), for example to turn a discussion into ` +
-            "a todo list. Someone in the channel must confirm with a button before it's created, and the result " +
-            "says whether it was. Write a clear title and a Markdown body; use a checklist (- [ ] item) for todos.",
+            "a todo list. Someone in the channel must confirm with a button before it's created: this returns " +
+            "right away, and you're told the outcome in a later message. Write a clear title and a Markdown body; " +
+            "use a checklist (- [ ] item) for todos.",
         input_schema: {
             type: "object",
             properties: {
@@ -126,7 +144,8 @@ export const CUSTOM_TOOLS: BetaManagedAgentsCustomToolParams[] = [
         name: "comment_on_issue",
         description:
             "Comment on an existing TechNexus issue, for example to add what was decided in a discussion. " +
-            "Someone in the channel must confirm with a button first, and the result says whether it was posted.",
+            "Someone in the channel must confirm with a button first: this returns right away, and you're told " +
+            "the outcome in a later message.",
         input_schema: {
             type: "object",
             properties: {
@@ -142,6 +161,7 @@ export const CUSTOM_TOOLS: BetaManagedAgentsCustomToolParams[] = [
 export interface ToolContext {
     channel: GuildTextBasedChannel; // where the conversation is
     lastMessage: Message<true> | null; // latest message relayed to Claude; its author is "the person asking"
+    later: (outcome: Promise<string>) => void; // tells Claude an outcome that comes after the tool returned
 }
 
 export interface ToolResult {
@@ -296,17 +316,18 @@ async function createIssue(input: Record<string, unknown>, ctx: ToolContext): Pr
     const body = text(input.body) ?? "";
     if (!title) return {text: "An issue needs a title.", isError: true};
 
-    const confirmed = await confirm(ctx, `**Create this issue in ${TECHNEXUS_REPO}?**\n### ${title}\n${truncate(body, 1500)}`, "Create");
-    if ("text" in confirmed) return confirmed;
-
-    const created = await github<Issue>("POST", `/repos/${TECHNEXUS_REPO}/issues`, {title, body});
-    if (!created.ok) {
-        await confirmed.done(`GitHub refused it (${created.status}).`);
-        return githubError(created);
-    }
-    const issue = created.data;
-    await confirmed.done(`✅ Created [#${issue.number}](<${issue.html_url}>), confirmed by ${confirmed.who}.`);
-    return {text: `Created issue #${issue.number}: ${issue.html_url} (confirmed by ${confirmed.who}).`};
+    const preview = `**Create this issue in ${TECHNEXUS_REPO}?**\n### ${title}\n${truncate(body, 1500)}`;
+    return confirmThen(ctx, preview, "Create", `the issue "${title}"`, async (who) => {
+        const created = await github<Issue>("POST", `/repos/${TECHNEXUS_REPO}/issues`, {title, body});
+        if (!created.ok) {
+            return {note: `GitHub refused it (${created.status}).`, outcome: `Creating the issue "${title}" failed. ${githubError(created).text}`};
+        }
+        const issue = created.data;
+        return {
+            note: `✅ Created [#${issue.number}](<${issue.html_url}>), confirmed by ${who}.`,
+            outcome: `Created issue #${issue.number} "${title}": ${issue.html_url} (confirmed by ${who}).`,
+        };
+    });
 }
 
 async function commentOnIssue(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
@@ -319,28 +340,33 @@ async function commentOnIssue(input: Record<string, unknown>, ctx: ToolContext):
     const issue = await github<Issue>("GET", `/repos/${TECHNEXUS_REPO}/issues/${number}`);
     if (!issue.ok) return githubError(issue);
 
-    const confirmed = await confirm(ctx, `**Comment on #${number} ${issue.data.title}?**\n${truncate(body, 1700)}`, "Post");
-    if ("text" in confirmed) return confirmed;
-
-    const posted = await github<Comment>("POST", `/repos/${TECHNEXUS_REPO}/issues/${number}/comments`, {body});
-    if (!posted.ok) {
-        await confirmed.done(`GitHub refused it (${posted.status}).`);
-        return githubError(posted);
-    }
-    await confirmed.done(`✅ Posted [the comment](<${posted.data.html_url}>) on #${number}, confirmed by ${confirmed.who}.`);
-    return {text: `Posted the comment on #${number}: ${posted.data.html_url} (confirmed by ${confirmed.who}).`};
+    const preview = `**Comment on #${number} ${issue.data.title}?**\n${truncate(body, 1700)}`;
+    return confirmThen(ctx, preview, "Post", `the comment on #${number}`, async (who) => {
+        const posted = await github<Comment>("POST", `/repos/${TECHNEXUS_REPO}/issues/${number}/comments`, {body});
+        if (!posted.ok) {
+            return {note: `GitHub refused it (${posted.status}).`, outcome: `Posting the comment on #${number} failed. ${githubError(posted).text}`};
+        }
+        return {
+            note: `✅ Posted [the comment](<${posted.data.html_url}>) on #${number}, confirmed by ${who}.`,
+            outcome: `Posted the comment on #${number}: ${posted.data.html_url} (confirmed by ${who}).`,
+        };
+    });
 }
 
 /**
- * Posts `preview` with an action button and Cancel. Anyone in the channel can
- * click; nothing happens without a click. Resolves to who confirmed and a way
- * to note the outcome under the preview, or to a result saying why not.
+ * Posts `preview` with an action button and Cancel, then returns right away, so
+ * the conversation isn't held up while people decide. Anyone in the channel
+ * can click; nothing happens without a click. After a click, `run` does the
+ * work and gives a note for under the preview and the outcome for Claude. What
+ * happened, including a cancel or nobody clicking, reaches Claude via ctx.later.
  */
-async function confirm(
+async function confirmThen(
     ctx: ToolContext,
     preview: string,
     action: string,
-): Promise<{ who: string; done: (note: string) => Promise<void> } | ToolResult> {
+    what: string, // "the issue "Fix login"", for the outcome
+    run: (who: string) => Promise<{ note: string; outcome: string }>,
+): Promise<ToolResult> {
     const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId("confirm").setLabel(action).setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId("cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary),
@@ -351,21 +377,33 @@ async function confirm(
         });
     };
 
-    let click;
-    try {
-        click = await prompt.awaitMessageComponent({componentType: ComponentType.Button, time: ISSUE_CONFIRM_MS});
-    } catch {
-        await note("Nobody confirmed, so nothing was done.");
-        return {text: "Nobody confirmed in time, so nothing was done."};
-    }
+    ctx.later((async () => {
+        let click;
+        try {
+            click = await prompt.awaitMessageComponent({componentType: ComponentType.Button, time: ISSUE_CONFIRM_MS});
+        } catch {
+            await note("Nobody confirmed, so nothing was done.");
+            return `Nobody confirmed ${what} in time, so nothing was done.`;
+        }
 
-    const who = click.member && "displayName" in click.member ? click.member.displayName : click.user.displayName;
-    if (click.customId === "cancel") {
-        await click.update({content: `${preview}\n-# Cancelled by ${who}.`, components: []});
-        return {text: `${who} cancelled it, so nothing was done.`};
-    }
-    await click.update({content: `${preview}\n-# Working on it...`, components: []});
-    return {who, done: note};
+        const who = click.member && "displayName" in click.member ? click.member.displayName : click.user.displayName;
+        if (click.customId === "cancel") {
+            await click.update({content: `${preview}\n-# Cancelled by ${who}.`, components: []});
+            return `${who} cancelled ${what}, so nothing was done.`;
+        }
+        await click.update({content: `${preview}\n-# Working on it...`, components: []});
+        try {
+            const result = await run(who);
+            await note(result.note);
+            return result.outcome;
+        } catch (err) {
+            await note("Something went wrong, so nothing was done.");
+            return `${who} confirmed ${what}, but it failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+    })());
+
+    const minutes = Math.round(ISSUE_CONFIRM_MS / 60_000);
+    return {text: `Posted the preview with a ${action} button. Nothing happens until someone clicks it (within ${minutes} minutes); you'll get a message with the outcome.`};
 }
 
 type GitHubResult<T> = { ok: true; data: T } | { ok: false; status: number; detail: string };
