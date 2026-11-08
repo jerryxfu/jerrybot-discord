@@ -90,7 +90,7 @@ Conversations start on a small, fast model (Haiku). With escalate, you hand the 
 You can also use Discord and GitHub through your tools:
 - read_messages and list_channels: look further back in the conversation, or at another channel, when the answer depends on something said there.
 - react: add an emoji reaction. Use it naturally; when a reaction says enough, react and then reply [skip].
-- list_issues, read_issue, create_issue and comment_on_issue: work with TechNexus issues, for example to turn a discussion into a todo list, or add what was decided to an existing issue. Creating and commenting post a preview that someone in the channel confirms with a button; you're told the outcome in a later message.`;
+- list_issues, read_issue, create_issue and comment_on_issue: work with issues in the repos you have copies of (TechNexus unless someone means another one), for example to turn a discussion into a todo list, or add what was decided to an existing issue. Creating and commenting post a preview that someone in the channel confirms with a button; you're told the outcome in a later message.`;
 
 export const CHANNEL_NOTE =
     "You're in a regular channel where other conversations happen too. Keep replies on the shorter side: up to about a dozen sentences, a list, or a few small code blocks. When someone asks for a thread, or a question clearly needs a long answer or a long back-and-forth, move the conversation into a thread with start_thread (say so in a few words) and answer there.";
@@ -127,7 +127,7 @@ export const AGENT_TOOLS: NonNullable<Anthropic.Beta.AgentCreateParams["tools"]>
 ];
 
 /** Tools Claude can use besides its sandbox (see tools.ts). */
-export const TECHNEXUS_REPO = "jerryxfu/TechNexus"; // issues go here (its code is in MOUNTED_REPOS)
+export const TECHNEXUS_REPO = "jerryxfu/TechNexus"; // where issues go unless Claude names another of MOUNTED_REPOS
 export const READ_MESSAGES_MAX = 50; // per read_messages call
 export const ISSUE_CONFIRM_MS = 5 * 60_000; // how long the Create/Cancel buttons wait
 

@@ -3,9 +3,7 @@ import {
     ButtonBuilder,
     ButtonStyle,
     ChannelType,
-    Colors,
     ComponentType,
-    EmbedBuilder,
     MessageFlags,
     PermissionFlagsBits,
     SlashCommandBuilder,
@@ -96,18 +94,25 @@ const command: Command = {
         // Confirmed. Acknowledge the button click, then delete.
         await click.update({content: "Purging...", components: []});
 
-        const deleted = await channel.bulkDelete(amount, true);
+        let deleted;
+        try {
+            deleted = await channel.bulkDelete(amount, true);
+        } catch (err) {
+            console.error("Purge failed:", err);
+            await interaction.editReply({
+                content: "❌ Couldn't delete the messages. I may be missing Manage Messages in this channel.",
+                components: [],
+            });
+            return;
+        }
 
-        const embed = new EmbedBuilder()
-            .setColor(Colors.Green)
-            .setDescription(
-                `Deleted **${deleted.size}** message${deleted.size === 1 ? "" : "s"}.` +
-                (deleted.size < amount
-                    ? `\n*Some messages couldn't be deleted (older than 14 days).*`
-                    : ""),
-            );
+        const result =
+            `✅ Deleted **${deleted.size}** message${deleted.size === 1 ? "" : "s"}.` +
+            (deleted.size < amount
+                ? `\n-# Some messages couldn't be deleted (older than 14 days).`
+                : "");
 
-        await interaction.followUp({content: "", embeds: [embed], components: []});
+        await interaction.followUp({content: result, components: []});
         await interaction.deleteReply();
     },
 };

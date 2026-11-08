@@ -13,7 +13,7 @@ import {
     PermissionFlagsBits,
 } from "discord.js";
 import {truncate} from "../utils/truncate.js";
-import {ISSUE_CONFIRM_MS, READ_MESSAGES_MAX, TECHNEXUS_REPO} from "./config.js";
+import {ISSUE_CONFIRM_MS, MOUNTED_REPOS, READ_MESSAGES_MAX, TECHNEXUS_REPO} from "./config.js";
 import {formatMessage, formatTime} from "./history.js";
 
 /**
@@ -24,6 +24,13 @@ import {formatMessage, formatTime} from "./history.js";
  * Reading is checked against the person asking: Claude can read a channel only
  * if the author of the latest message it got can see it.
  */
+
+// The issue tools work on any repo in MOUNTED_REPOS, TechNexus by default.
+const REPO_INPUT = {
+    type: "string",
+    enum: MOUNTED_REPOS.map((repo) => repoName(repo)),
+    description: `Which repo. Default ${repoName(TECHNEXUS_REPO)}.`,
+};
 
 export const CUSTOM_TOOLS: BetaManagedAgentsCustomToolParams[] = [
     {
@@ -102,13 +109,14 @@ export const CUSTOM_TOOLS: BetaManagedAgentsCustomToolParams[] = [
         type: "custom",
         name: "create_issue",
         description:
-            `Open an issue in the private TechNexus repo (${TECHNEXUS_REPO}), for example to turn a discussion into ` +
-            "a todo list. Someone in the channel must confirm with a button before it's created: this returns " +
+            "Open an issue in one of the repos you have a copy of (TechNexus unless they mean another one), for " +
+            "example to turn a discussion into a todo list. Someone in the channel must confirm with a button before it's created: this returns " +
             "right away, and you're told the outcome in a later message. Write a clear title and a Markdown body; " +
             "use a checklist (- [ ] item) for todos.",
         input_schema: {
             type: "object",
             properties: {
+                repo: REPO_INPUT,
                 title: {type: "string", maxLength: 256},
                 body: {type: "string"},
             },
@@ -119,11 +127,12 @@ export const CUSTOM_TOOLS: BetaManagedAgentsCustomToolParams[] = [
         type: "custom",
         name: "list_issues",
         description:
-            "List or search issues in the private TechNexus repo. Without a query: the 30 most recently updated. " +
+            "List or search issues in one of the repos you have a copy of. Without a query: the 30 most recently updated. " +
             "With a query: a GitHub issue search (words, label:bug, author:name, ...).",
         input_schema: {
             type: "object",
             properties: {
+                repo: REPO_INPUT,
                 query: {type: "string"},
                 state: {type: "string", enum: ["open", "closed", "all"], description: "Default open."},
             },
@@ -132,10 +141,10 @@ export const CUSTOM_TOOLS: BetaManagedAgentsCustomToolParams[] = [
     {
         type: "custom",
         name: "read_issue",
-        description: "Read a TechNexus issue: its description and comments.",
+        description: "Read an issue, in TechNexus or another repo you have a copy of: its description and comments.",
         input_schema: {
             type: "object",
-            properties: {number: {type: "integer", minimum: 1}},
+            properties: {repo: REPO_INPUT, number: {type: "integer", minimum: 1}},
             required: ["number"],
         },
     },
@@ -143,12 +152,14 @@ export const CUSTOM_TOOLS: BetaManagedAgentsCustomToolParams[] = [
         type: "custom",
         name: "comment_on_issue",
         description:
-            "Comment on an existing TechNexus issue, for example to add what was decided in a discussion. " +
+            "Comment on an existing issue, in TechNexus or another repo you have a copy of, for example to add what " +
+            "was decided in a discussion. " +
             "Someone in the channel must confirm with a button first: this returns right away, and you're told " +
             "the outcome in a later message.",
         input_schema: {
             type: "object",
             properties: {
+                repo: REPO_INPUT,
                 number: {type: "integer", minimum: 1},
                 body: {type: "string", description: "Markdown."},
             },
@@ -244,7 +255,7 @@ async function react(input: Record<string, unknown>, ctx: ToolContext): Promise<
     return {text: "Reacted."};
 }
 
-// --- GitHub: TechNexus issues ---------------------------------------------
+// --- GitHub: issues (TechNexus and the other MOUNTED_REPOS) ----------------
 
 interface Issue {
     number: number;
@@ -269,16 +280,18 @@ interface Comment {
 const NO_TOKEN: ToolResult = {text: "GitHub isn't set up (no GITHUB_TOKEN), so issues aren't available.", isError: true};
 
 async function listIssues(input: Record<string, unknown>): Promise<ToolResult> {
+    const repo = issueRepo(input);
+    if (!repo) return UNKNOWN_REPO;
     const state = ["open", "closed", "all"].includes(String(input.state)) ? String(input.state) : "open";
     const query = text(input.query);
-    const search = `repo:${TECHNEXUS_REPO} is:issue${state === "all" ? "" : ` is:${state}`} ${query ?? ""}`;
+    const search = `repo:${repo} is:issue${state === "all" ? "" : ` is:${state}`} ${query ?? ""}`;
     const result = query
         ? await github<{ items: Issue[] }>("GET", `/search/issues?q=${encodeURIComponent(search)}&per_page=20`)
-        : await github<Issue[]>("GET", `/repos/${TECHNEXUS_REPO}/issues?state=${state}&per_page=30`);
+        : await github<Issue[]>("GET", `/repos/${repo}/issues?state=${state}&per_page=30`);
     if (!result.ok) return githubError(result);
 
     const issues = (Array.isArray(result.data) ? result.data : result.data.items).filter((i) => !i.pull_request);
-    if (issues.length === 0) return {text: query ? `No ${state} issues match "${query}".` : `No ${state} issues.`};
+    if (issues.length === 0) return {text: query ? `No ${state} issues in ${repo} match "${query}".` : `No ${state} issues in ${repo}.`};
     return {
         text: issues.map((i) => {
             const labels = i.labels.length > 0 ? ` [${i.labels.map((l) => l.name).join(", ")}]` : "";
@@ -288,17 +301,19 @@ async function listIssues(input: Record<string, unknown>): Promise<ToolResult> {
 }
 
 async function readIssue(input: Record<string, unknown>): Promise<ToolResult> {
+    const repo = issueRepo(input);
+    if (!repo) return UNKNOWN_REPO;
     const number = issueNumber(input.number);
     if (!number) return {text: "Give an issue number.", isError: true};
-    const issue = await github<Issue>("GET", `/repos/${TECHNEXUS_REPO}/issues/${number}`);
+    const issue = await github<Issue>("GET", `/repos/${repo}/issues/${number}`);
     if (!issue.ok) return githubError(issue);
-    const comments = await github<Comment[]>("GET", `/repos/${TECHNEXUS_REPO}/issues/${number}/comments?per_page=100`);
+    const comments = await github<Comment[]>("GET", `/repos/${repo}/issues/${number}/comments?per_page=100`);
     if (!comments.ok) return githubError(comments);
 
     const i = issue.data;
     const shown = comments.data.slice(-20);
     const lines = [
-        `#${i.number} (${i.state}) ${i.title}`,
+        `${repo}#${i.number} (${i.state}) ${i.title}`,
         `by ${i.user?.login ?? "?"}${i.labels.length > 0 ? `, labels: ${i.labels.map((l) => l.name).join(", ")}` : ""}, ${i.html_url}`,
         "",
         truncate(i.body?.trim() || "(no description)", 4000),
@@ -312,43 +327,48 @@ async function readIssue(input: Record<string, unknown>): Promise<ToolResult> {
 
 async function createIssue(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     if (!process.env.GITHUB_TOKEN) return NO_TOKEN;
+    const repo = issueRepo(input);
+    if (!repo) return UNKNOWN_REPO;
     const title = text(input.title)?.slice(0, 256);
     const body = text(input.body) ?? "";
     if (!title) return {text: "An issue needs a title.", isError: true};
 
-    const preview = `**Create this issue in ${TECHNEXUS_REPO}?**\n### ${title}\n${truncate(body, 1500)}`;
-    return confirmThen(ctx, preview, "Create", `the issue "${title}"`, async (who) => {
-        const created = await github<Issue>("POST", `/repos/${TECHNEXUS_REPO}/issues`, {title, body});
+    const preview = `**Create this issue in ${repo}?**\n### ${title}\n${truncate(body, 1500)}`;
+    return confirmThen(ctx, preview, "Create", `the issue "${title}" in ${repo}`, async (who) => {
+        const created = await github<Issue>("POST", `/repos/${repo}/issues`, {title, body});
         if (!created.ok) {
-            return {note: `GitHub refused it (${created.status}).`, outcome: `Creating the issue "${title}" failed. ${githubError(created).text}`};
+            return {note: `GitHub refused it (${created.status}).`, outcome: `Creating the issue "${title}" in ${repo} failed. ${githubError(created).text}`};
         }
         const issue = created.data;
         return {
-            note: `✅ Created [#${issue.number}](<${issue.html_url}>), confirmed by ${who}.`,
-            outcome: `Created issue #${issue.number} "${title}": ${issue.html_url} (confirmed by ${who}).`,
+            note: `✅ Created [${repoName(repo)}#${issue.number}](<${issue.html_url}>), confirmed by ${who}.`,
+            outcome: `Created issue ${repo}#${issue.number} "${title}": ${issue.html_url} (confirmed by ${who}).`,
         };
     });
 }
 
 async function commentOnIssue(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     if (!process.env.GITHUB_TOKEN) return NO_TOKEN;
+    const repo = issueRepo(input);
+    if (!repo) return UNKNOWN_REPO;
     const number = issueNumber(input.number);
     const body = text(input.body);
     if (!number || !body) return {text: "Give an issue number and the comment.", isError: true};
 
     // Look it up first, so the preview shows which issue and a wrong number fails early.
-    const issue = await github<Issue>("GET", `/repos/${TECHNEXUS_REPO}/issues/${number}`);
+    const issue = await github<Issue>("GET", `/repos/${repo}/issues/${number}`);
     if (!issue.ok) return githubError(issue);
 
-    const preview = `**Comment on #${number} ${issue.data.title}?**\n${truncate(body, 1700)}`;
-    return confirmThen(ctx, preview, "Post", `the comment on #${number}`, async (who) => {
-        const posted = await github<Comment>("POST", `/repos/${TECHNEXUS_REPO}/issues/${number}/comments`, {body});
+    const ref = `${repo}#${number}`;
+    const preview = `**Comment on ${ref} ${issue.data.title}?**\n${truncate(body, 1700)}`;
+    return confirmThen(ctx, preview, "Post", `the comment on ${ref}`, async (who) => {
+        const posted = await github<Comment>("POST", `/repos/${repo}/issues/${number}/comments`, {body});
         if (!posted.ok) {
-            return {note: `GitHub refused it (${posted.status}).`, outcome: `Posting the comment on #${number} failed. ${githubError(posted).text}`};
+            return {note: `GitHub refused it (${posted.status}).`, outcome: `Posting the comment on ${ref} failed. ${githubError(posted).text}`};
         }
         return {
-            note: `✅ Posted [the comment](<${posted.data.html_url}>) on #${number}, confirmed by ${who}.`,
-            outcome: `Posted the comment on #${number}: ${posted.data.html_url} (confirmed by ${who}).`,
+            note: `✅ Posted [the comment](<${posted.data.html_url}>) on ${ref}, confirmed by ${who}.`,
+            outcome: `Posted the comment on ${ref}: ${posted.data.html_url} (confirmed by ${who}).`,
         };
     });
 }
@@ -426,9 +446,30 @@ async function github<T>(method: "GET" | "POST", path: string, body?: unknown): 
 }
 
 function githubError(result: { status: number; detail: string }): ToolResult {
-    if (result.status === 404) return {text: "Not found: no such issue in TechNexus.", isError: true};
+    if (result.status === 404) return {text: "Not found: no such issue in that repo.", isError: true};
     return {text: result.status ? `GitHub returned ${result.status}: ${result.detail}` : result.detail, isError: true};
 }
+
+/** "jerryxfu/jerrydev" -> "jerrydev" */
+function repoName(repo: string): string {
+    return repo.split("/")[1] ?? repo;
+}
+
+/**
+ * The full name of the repo an issue tool should use: one of MOUNTED_REPOS,
+ * given as "jerrydev" or "jerryxfu/jerrydev", or TechNexus when none is given.
+ * Null for any other repo.
+ */
+function issueRepo(input: Record<string, unknown>): string | null {
+    const wanted = text(input.repo)?.toLowerCase();
+    if (!wanted) return TECHNEXUS_REPO;
+    return MOUNTED_REPOS.find((repo) => repo.toLowerCase() === wanted || repoName(repo).toLowerCase() === wanted) ?? null;
+}
+
+const UNKNOWN_REPO: ToolResult = {
+    text: `Issues only work in these repos: ${MOUNTED_REPOS.map((repo) => repoName(repo)).join(", ")}.`,
+    isError: true,
+};
 
 function issueNumber(value: unknown): number | null {
     const number = Math.trunc(Number(value));

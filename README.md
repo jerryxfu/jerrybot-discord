@@ -68,8 +68,8 @@ row that weren't for it (none answered, none mentioning it), or on `@Claude slee
 - The bot shows as online while any conversation is awake, and idle while they're all asleep.
 - Chat stops starting conversations once this month's chat spend reaches $98.
 - Claude has tools the bot runs for it (`src/chat/tools.ts`): `list_channels` and `read_messages`
-  (only channels the person asking can see), `react`, and TechNexus issues: `list_issues`,
-  `read_issue`, `create_issue` and `comment_on_issue`. Creating and commenting post a preview that waits
+  (only channels the person asking can see), `react`, and GitHub issues in any repo of `MOUNTED_REPOS`
+  (TechNexus by default): `list_issues`, `read_issue`, `create_issue` and `comment_on_issue`. Creating and commenting post a preview that waits
   for someone in the channel to click the button; the conversation carries on meanwhile, and Claude is
   told the outcome. With `GITHUB_TOKEN` set, read-only copies of the repos in `MOUNTED_REPOS`
   (`src/chat/config.ts`) are in its sandbox at `/workspace/<name>`; anyone in the server can ask Claude
