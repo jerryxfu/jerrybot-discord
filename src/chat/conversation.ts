@@ -32,8 +32,7 @@ import {
     MODEL,
     MONTHLY_LIMIT_CENTS,
     RESUME_WINDOW_MS,
-    TECHNEXUS_MOUNT,
-    TECHNEXUS_REPO,
+    MOUNTED_REPOS,
     THREAD_NOTE,
     UNANSWERED_BEFORE_SLEEP,
     USAGE_FROM_PERCENT,
@@ -598,15 +597,15 @@ function createSession(label: string, agentId: string, environmentId: string, es
         environment_id: environmentId,
         title: label,
         budget: {type: "limit", max_list_cost: {amount: String(budgetCents), currency: "USD"}},
-        // TechNexus is private: mounted with a token that can read its code but
-        // not push. Without a token there's simply no copy.
+        // Mounted with a token that can read their code but not push. Without a
+        // token there are simply no copies.
         resources: githubToken
-            ? [{
-                type: "github_repository",
-                url: `https://github.com/${TECHNEXUS_REPO}`,
-                mount_path: TECHNEXUS_MOUNT,
+            ? MOUNTED_REPOS.map((repo) => ({
+                type: "github_repository" as const,
+                url: `https://github.com/${repo}`,
+                mount_path: `/workspace/${repo.split("/")[1]}`,
                 authorization_token: githubToken,
-            }]
+            }))
             : [],
     });
 }

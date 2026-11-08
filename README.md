@@ -71,8 +71,9 @@ row that weren't for it (none answered, none mentioning it), or on `@Claude slee
   (only channels the person asking can see), `react`, and TechNexus issues: `list_issues`,
   `read_issue`, `create_issue` and `comment_on_issue`. Creating and commenting post a preview that waits
   for someone in the channel to click the button; the conversation carries on meanwhile, and Claude is
-  told the outcome. With `GITHUB_TOKEN` set, a read-only copy of TechNexus is in its
-  sandbox. The Discord and GitHub tokens stay in the bot; none of the tools can delete, kick, ban or
+  told the outcome. With `GITHUB_TOKEN` set, read-only copies of the repos in `MOUNTED_REPOS`
+  (`src/chat/config.ts`) are in its sandbox at `/workspace/<name>`; anyone in the server can ask Claude
+  to read them, so only list repos you'd show everyone. The Discord and GitHub tokens stay in the bot; none of the tools can delete, kick, ban or
   change anything in the server.
 - Claude can also move a conversation into a thread itself (`start_thread`), keeping its context.
 - Claude can mention people (users only, never @everyone or roles) and answer as a Discord reply when
@@ -110,7 +111,8 @@ with the full transcript and its cost.
 3. **Enable Message Content.** Discord Developer Portal → the app → **Bot** → **Privileged Gateway
    Intents** → turn on **Message Content Intent**. The bot won't log in without it.
 4. **(Optional) GitHub token.** github.com → Settings → Developer settings → Fine-grained tokens:
-   only the `jerryxfu/TechNexus` repo, **Contents: Read-only** and **Issues: Read and write**. Put it in
+   the repos in `MOUNTED_REPOS` (`src/chat/config.ts`), **Contents: Read-only**, and **Issues: Read and
+   write** (used for TechNexus only). Put it in
    `.env` as `GITHUB_TOKEN`. Read-only contents is what stops Claude from pushing.
 5. **Create the agent and environment.** Run `pnpm agent:setup` and paste the two lines it prints
    (`CHAT_ENVIRONMENT_ID=...`, `CHAT_AGENT_ID=...`) into `.env`.

@@ -20,6 +20,21 @@ export const ADVISOR_MODEL = "claude-opus-5-5"; // must be at least as capable a
 export const ESCALATE_MODEL = "claude-sonnet-5-5";
 export const ESCALATE_EFFORT = "xhigh";
 
+// Repos copied into every session's sandbox at /workspace/<name>, read-only:
+// GITHUB_TOKEN can read them (Contents: Read-only) but not push. Each one is
+// cloned when a session starts, so list the ones that come up, and nothing
+// private you wouldn't show the whole server: anyone there can ask Claude to
+// read them. Without GITHUB_TOKEN, none are mounted. The list is also in
+// SYSTEM_PROMPT, so run `pnpm agent:setup` after changing it.
+export const MOUNTED_REPOS = [
+    "jerryxfu/TechNexus",
+    "jerryxfu/jerrydev",
+    "jerryxfu/jerrydev-api",
+    "jerryxfu/jerrybot-discord",
+    "jerryxfu/technexus-proxy",
+    "jerryxfu/technexus-releases",
+];
+
 /*
  * Prompt text. Everything Claude is told lives here:
  * - SYSTEM_PROMPT: who it is and how to behave. Part of the agent, so run
@@ -37,7 +52,7 @@ How you run: Jerry built this bot and hosts it himself. It calls the Claude API 
 Some of them do FRC (FIRST Robotics Competition) on two teams from the same school: 3990 Tech for Kids (T4K), with secondary 4 and 5 students, and 9406 Tech Juniors (TJ), with secondary 3 students. Their robot code is on GitHub under team3990, for example TechSwerves2027, the swerve, localization and vision base for the 2027 season.
 
 Projects that come up:
-- TechNexus (github.com/jerryxfu/TechNexus, private): a companion app for FRC teams with match schedules, queue status and pit tools, using live data from Nexus (frc.nexus). Kotlin Multiplatform, with SwiftUI on iOS and Compose on Android. A read-only copy of its code is in /workspace/TechNexus: you can read it, but not push to it.
+- TechNexus (github.com/jerryxfu/TechNexus, private): a companion app for FRC teams with match schedules, queue status and pit tools, using live data from Nexus (frc.nexus). Kotlin Multiplatform, with SwiftUI on iOS and Compose on Android.
 - Personal websites: Jerry (jerryxf) at jerryxf.net (github.com/jerryxfu/jerrydev), Raphaël (raphdf201) at raphdf201.net, Ludovic (civamsqueak) at ludot.dev, Samy (c7samy2) at samyth.dev.
 - Other code projects on GitHub under jerryxfu, and some of the friends' own projects.
 
@@ -62,7 +77,7 @@ Your replies are posted to Discord:
 
 You have a Linux sandbox with internet access, plus web search:
 - Search the web when the answer depends on recent or specific information.
-- To look at a repo, clone it into /workspace (shallow clones are faster: git clone --depth 1). Only public repos can be cloned; TechNexus is already there.
+- Read-only copies of these repos are already in /workspace, one folder each (you can read them, but not push): ${MOUNTED_REPOS.map((repo) => repo.split("/")[1]).join(", ")}. Other public repos you can clone into /workspace yourself (shallow clones are faster: git clone --depth 1); other private ones you can't.
 - Your context is limited, so find what you need with grep and glob and read only the relevant parts of files instead of whole files or directories.
 - The sandbox holds no passwords or keys, and its files may be gone after the conversation sleeps.
 - Images and PDFs people attach come with their message, so you can look at them.
@@ -112,8 +127,7 @@ export const AGENT_TOOLS: NonNullable<Anthropic.Beta.AgentCreateParams["tools"]>
 ];
 
 /** Tools Claude can use besides its sandbox (see tools.ts). */
-export const TECHNEXUS_REPO = "jerryxfu/TechNexus"; // issues go here; its code is mounted read-only
-export const TECHNEXUS_MOUNT = "/workspace/TechNexus";
+export const TECHNEXUS_REPO = "jerryxfu/TechNexus"; // issues go here (its code is in MOUNTED_REPOS)
 export const READ_MESSAGES_MAX = 50; // per read_messages call
 export const ISSUE_CONFIRM_MS = 5 * 60_000; // how long the Create/Cancel buttons wait
 
