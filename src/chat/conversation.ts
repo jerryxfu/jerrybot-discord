@@ -91,6 +91,8 @@ interface Conversation {
     contextTokens: number; // size of the context after the latest model request
     lastReply: Message | null; // last message posted this turn, gets the footer
     advisorThreads: Set<string>; // advisor consultations this turn, by thread ID
+    thinkingSince: Map<string, number>; // thinking blocks in progress: event ID -> epoch ms it started
+    thinkingMs: number; // time spent thinking this turn
     replies: number; // messages posted this turn
     cachedTokens: number; // input tokens read from cache this turn
     inputTokens: number; // all input tokens this turn, cached or not
@@ -541,6 +543,8 @@ async function attach(channel: GuildTextBasedChannel, stored: StoredSession): Pr
         contextTokens: stored.contextTokens,
         lastReply: null,
         advisorThreads: new Set(),
+        thinkingSince: new Map(),
+        thinkingMs: 0,
         replies: 0,
         cachedTokens: 0,
         inputTokens: 0,
@@ -678,6 +682,7 @@ async function escalateConversation(
         contextLimit: ESCALATE_CONTEXT_LIMIT,
         contextTokens: 0,
         lastReply: null,
+        thinkingMs: 0,
         replies: 0,
         cachedTokens: 0,
         inputTokens: 0,
@@ -692,6 +697,7 @@ async function escalateConversation(
         running: false,
     } satisfies Partial<Conversation>);
     conversation.advisorThreads.clear();
+    conversation.thinkingSince.clear();
     remember(conversation);
     old.stream?.abort();
     void consume(conversation, stream, session.id);
@@ -760,9 +766,12 @@ async function archive(label: string, sessionId: string): Promise<void> {
     });
 }
 
-/** The session's event stream, with live previews of replies as they're written. */
+/**
+ * The session's event stream, with live previews of replies as they're
+ * written, and a start signal for each thinking block (its text isn't exposed).
+ */
 function openStream(sessionId: string) {
-    return api().beta.sessions.events.stream(sessionId, {event_deltas: ["agent.message"]});
+    return api().beta.sessions.events.stream(sessionId, {event_deltas: ["agent.message", "agent.thinking"]});
 }
 
 async function consume(conversation: Conversation, stream: AsyncIterable<SessionEvent>, sessionId: string): Promise<void> {
@@ -818,7 +827,17 @@ async function handleEvent(conversation: Conversation, event: SessionEvent): Pro
     switch (event.type) {
         case "event_start":
             if (event.event.type === "agent.message") conversation.preview = "";
+            if (event.event.type === "agent.thinking") conversation.thinkingSince.set(event.event.id, Date.now());
             return;
+
+        case "agent.thinking": {
+            // Ends the thinking block its event_start opened. Timed on our clock
+            // at both ends; one replayed after a reconnect has no start and isn't counted.
+            const started = conversation.thinkingSince.get(event.id);
+            conversation.thinkingSince.delete(event.id);
+            if (started !== undefined) conversation.thinkingMs += Date.now() - started;
+            return;
+        }
 
         case "event_delta": {
             // Type as soon as the reply is clearly not going to be [skip].
@@ -916,6 +935,7 @@ async function handleEvent(conversation: Conversation, event: SessionEvent): Pro
 
         case "session.status_idle": {
             conversation.running = false;
+            conversation.thinkingSince.clear(); // blocks cut off mid-request never conclude
             if (conversation.switching) return; // the old session; the new one takes over
             stopTyping(conversation);
             const skipped = conversation.skipped;
@@ -1144,8 +1164,10 @@ function showsUsage(conversation: Conversation): boolean {
 async function postFooter(conversation: Conversation): Promise<void> {
     const reply = conversation.lastReply;
     const advisorCalls = conversation.advisorThreads.size;
+    const thinkingMs = conversation.thinkingMs;
     conversation.lastReply = null;
     conversation.advisorThreads.clear();
+    conversation.thinkingMs = 0;
     if (!reply) return; // a [skip] turn posted nothing
 
     const usage = showsUsage(conversation)
@@ -1158,7 +1180,7 @@ async function postFooter(conversation: Conversation): Promise<void> {
         }
         : null;
     const advisor = advisorCalls > 0 ? {model: conversation.model, advisor: ADVISOR_MODEL, calls: advisorCalls} : null;
-    const footer = turnFooter(advisor, usage);
+    const footer = turnFooter(thinkingMs, advisor, usage);
     if (!footer) return;
 
     const edited = `${reply.content}\n${footer}`;

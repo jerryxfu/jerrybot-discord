@@ -4,14 +4,17 @@ import {MONTHLY_LIMIT_CENTS} from "./config.js";
 
 /**
  * The footer lines for a turn, or null if there's nothing to show:
+ *   -# 🧠 thought for 14s
  *   -# 💡 Haiku 5.5 asked Opus 5.5 for advice (2)
  *   -# Haiku 5.5 context 210K/400K (53%) ||$1.60/$3.00||
  */
 export function turnFooter(
+    thinkingMs: number,
     advisor: { model: string; advisor: string; calls: number } | null,
     usage: { model: string; contextTokens: number; contextLimit: number; spent: number | null; budget: number } | null,
 ): string | null {
     const lines: string[] = [];
+    if (thinkingMs >= 1000) lines.push(`-# 🧠 thought for ${formatSeconds(thinkingMs)}`);
     if (advisor) {
         lines.push(`-# 💡 ${modelName(advisor.model)} asked ${modelName(advisor.advisor)} for advice (${advisor.calls})`);
     }
@@ -56,6 +59,12 @@ export function modelName(id: string): string {
 
 export function formatTokens(tokens: number): string {
     return tokens < 1000 ? String(tokens) : `${Math.round(tokens / 1000)}K`;
+}
+
+/** 14_200 -> "14s", 125_000 -> "2m 5s" */
+export function formatSeconds(ms: number): string {
+    const seconds = Math.round(ms / 1000);
+    return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
 export function formatCents(cents: number): string {
