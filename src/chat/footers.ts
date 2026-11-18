@@ -2,9 +2,11 @@ import {MONTHLY_LIMIT_CENTS} from "./config.js";
 
 /** The small "-#" status lines the bot adds to Discord, and their formatting. */
 
+const THINKING_SHOWN_MS = 5_000; // shorter thinking isn't worth a line
+
 /**
  * The footer lines for a turn, or null if there's nothing to show:
- *   -# 🧠 thought for 14s
+ *   -# thought for 14s
  *   -# 💡 Haiku 5.5 asked Opus 5.5 for advice (2)
  *   -# Haiku 5.5 context 210K/400K (53%) ||$1.60/$3.00||
  */
@@ -14,7 +16,7 @@ export function turnFooter(
     usage: { model: string; contextTokens: number; contextLimit: number; spent: number | null; budget: number } | null,
 ): string | null {
     const lines: string[] = [];
-    if (thinkingMs >= 1000) lines.push(`-# 🧠 thought for ${formatSeconds(thinkingMs)}`);
+    if (thinkingMs >= THINKING_SHOWN_MS) lines.push(`-# thought for ${formatSeconds(thinkingMs)}`);
     if (advisor) {
         lines.push(`-# 💡 ${modelName(advisor.model)} asked ${modelName(advisor.advisor)} for advice (${advisor.calls})`);
     }

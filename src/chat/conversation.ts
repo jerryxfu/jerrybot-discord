@@ -38,7 +38,7 @@ import {
     USAGE_FROM_PERCENT,
 } from "./config.js";
 import {formatCents, formatTokens, modelName, sleepMessage, turnFooter} from "./footers.js";
-import {formatMessage, formatTime, recentMessages, withHistory} from "./history.js";
+import {attachmentsIn, formatMessage, formatTime, recentMessages, withHistory} from "./history.js";
 import {parseKeywords, threadName} from "./keywords.js";
 import {monthSpentCents, sessionBudget, spentCents} from "./spend.js";
 import {deleteStored, getStored, putStored, type StoredSession, storedSessions} from "./store.js";
@@ -233,7 +233,8 @@ export async function handleChatMessage(message: Message): Promise<void> {
     // A bare "@Claude escalate" (nothing else in it) only asks for the stronger
     // model, so it isn't relayed: there's nothing to answer. After switching,
     // the new session picks up the latest request instead.
-    const bare = escalate && !fresh && sleptAt === null && !keywords.rest && message.attachments.size === 0;
+    const bare = escalate && !fresh && sleptAt === null && !keywords.rest
+        && message.attachments.size === 0 && message.messageSnapshots.size === 0;
     let text = formatMessage(message);
     if (fresh) {
         await react(message, escalate ? "🔥" : "✅");
@@ -372,13 +373,14 @@ async function react(message: Message, emoji: string): Promise<void> {
 }
 
 /**
- * Images and PDFs attached to a message, as content Claude can see. Discord's
- * attachment URLs work as they are. Anything bigger or of another type is
- * only the link in the text (see formatMessage).
+ * Images and PDFs attached to a message or to a message it forwards, as
+ * content Claude can see. Discord's attachment URLs work as they are.
+ * Anything bigger or of another type is only the link in the text (see
+ * formatMessage).
  */
 function attachmentsOf(message: Message): Content {
     const blocks: Content = [];
-    for (const attachment of message.attachments.values()) {
+    for (const attachment of attachmentsIn(message)) {
         const type = attachment.contentType?.split(";")[0]?.trim();
         if (type && IMAGE_TYPES.includes(type) && attachment.size <= MAX_IMAGE_BYTES) {
             blocks.push({type: "image", source: {type: "url", url: attachment.url}});

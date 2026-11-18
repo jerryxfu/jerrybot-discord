@@ -1,4 +1,4 @@
-import type {Message} from "discord.js";
+import {type Attachment, type Message, MessageReferenceType} from "discord.js";
 import {truncate} from "../utils/truncate.js";
 import {HISTORY_MAX_AGE_MS, HISTORY_MAX_CHARS, HISTORY_MESSAGES, TIMEZONE} from "./config.js";
 
@@ -20,9 +20,11 @@ export function formatTime(date: Date): string {
 
 /**
  * "[message id] Name <@id>: text", with "(replying to Sam)" after the mention
- * for a Discord reply, plus any attachment URLs. So the agent knows who said
- * what to whom, can mention people by their <@id>, and can reply to or react
- * to a message by its ID.
+ * for a Discord reply, plus any attachment URLs. A forwarded message follows
+ * on its own line as "(forwarded from <#id>) text" with its attachment URLs;
+ * Discord doesn't say who wrote it. So the agent knows who said what to whom,
+ * can mention people by their <@id>, and can reply to or react to a message
+ * by its ID.
  */
 export function formatMessage(message: Message): string {
     const name = message.member?.displayName ?? message.author.displayName;
@@ -30,15 +32,32 @@ export function formatMessage(message: Message): string {
     const to = !repliedTo ? ""
         : repliedTo.id === message.client.user.id ? " (replying to you)"
             : ` (replying to ${message.guild?.members.cache.get(repliedTo.id)?.displayName ?? repliedTo.displayName})`;
-    const attachments = [...message.attachments.values()].map((a) => a.url);
-    return [`[${message.id}] ${name} <@${message.author.id}>${to}: ${withMentionNames(message)}`, ...attachments].join("\n");
+    const lines = [`[${message.id}] ${name} <@${message.author.id}>${to}: ${withMentionNames(message, message)}`];
+    lines.push(...[...message.attachments.values()].map((a) => a.url));
+    const reference = message.reference;
+    const from = reference?.type === MessageReferenceType.Forward && reference.guildId === message.guildId
+        ? ` from <#${reference.channelId}>`
+        : "";
+    for (const snapshot of message.messageSnapshots.values()) {
+        lines.push(`(forwarded${from}) ${withMentionNames(message, snapshot)}`.trimEnd());
+        lines.push(...[...snapshot.attachments.values()].map((a) => a.url));
+    }
+    return lines.join("\n");
 }
 
-/** The text with each user mention as "@Name <@id>", so both the name and the ID survive. */
-function withMentionNames(message: Message): string {
-    return message.content.replace(/<@!?(\d+)>/g, (_, id: string) => {
+/** A message's attachments, then those of any message it forwards. */
+export function attachmentsIn(message: Message): Attachment[] {
+    return [message, ...message.messageSnapshots.values()].flatMap((m) => [...m.attachments.values()]);
+}
+
+/**
+ * The text of `source` (the message itself, or a message it forwards) with
+ * each user mention as "@Name <@id>", so both the name and the ID survive.
+ */
+function withMentionNames(message: Message, source: Pick<Message, "content" | "mentions">): string {
+    return source.content.replace(/<@!?(\d+)>/g, (_, id: string) => {
         const name = message.guild?.members.cache.get(id)?.displayName
-            ?? message.mentions.users.get(id)?.displayName
+            ?? source.mentions.users.get(id)?.displayName
             ?? "someone";
         return `@${name} <@${id}>`;
     });
@@ -61,7 +80,7 @@ export async function recentMessages(message: Message<true>, since?: number): Pr
     const cutoff = since ?? message.createdTimestamp - HISTORY_MAX_AGE_MS;
     return [...fetched.values()]
         .filter((m) => m.createdTimestamp >= cutoff)
-        .filter((m) => m.cleanContent.trim() || m.attachments.size > 0)
+        .filter((m) => m.cleanContent.trim() || m.attachments.size > 0 || m.messageSnapshots.size > 0)
         .reverse() // fetch returns newest first
         .map((m) => truncate(formatMessage(m), HISTORY_MAX_CHARS));
 }
